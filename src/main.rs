@@ -13,7 +13,7 @@ const V_MAX: f64 = 0.1; // Velocidade máxima
 const PERSONAL_C: f64 = 2.0; // Coeficiente pessoal
 const SOCIAL_C: f64 = 2.0; // Coeficiente social
 const CONVERGENCE: f64 = 0.001; // Critério de convergência
-const MAX_ITER: usize = 100; // Número máximo de iterações
+const MAX_ITER: usize = 2_000_000; // Número máximo de iterações
 
 // Estrutura da Partícula
 #[derive(Clone)]
