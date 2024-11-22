@@ -32,6 +32,13 @@ struct Swarm {
     best_pos_z: f64,
 }
 
+// Estrutura para armazenar informações de cada iteração
+struct Iteration {
+    iteration_number: usize,
+    best_value: f64,
+    average_value: f64,
+}
+
 // Implementação das funções para o Enxame
 impl Swarm {
     fn new(population: usize, v_max: f64) -> Swarm {
@@ -86,7 +93,7 @@ fn cost_function(pos: &[f64; DIMENSIONS]) -> f64 {
 }
 
 // Função principal do algoritmo PSO
-fn particle_swarm_optimization() {
+fn particle_swarm_optimization() -> Vec<Iteration> {
     // Inicializa o enxame
     let mut swarm = Swarm::new(POPULATION, V_MAX);
 
@@ -96,10 +103,13 @@ fn particle_swarm_optimization() {
 
     let mut curr_iter = 0;
 
+    // Vetor para armazenar as informações de cada iteração
+    let mut iterations_data = Vec::new();
+
     while curr_iter < MAX_ITER {
         // Paraleliza a atualização das partículas
-        let best_particle = swarm
-            .particles
+        let particles_clone = &mut swarm.particles;
+        let best_particle = particles_clone
             .par_iter_mut()
             .map(|particle| {
                 let mut rng = rand::thread_rng();
@@ -155,6 +165,17 @@ fn particle_swarm_optimization() {
             swarm.best_pos_z = best_particle.pos_z;
         }
 
+        // Calcula a média dos valores de pos_z das partículas nesta iteração
+        let sum_pos_z: f64 = swarm.particles.par_iter().map(|p| p.pos_z).sum();
+        let average_pos_z = sum_pos_z / POPULATION as f64;
+
+        // Armazena os dados desta iteração
+        iterations_data.push(Iteration {
+            iteration_number: curr_iter,
+            best_value: swarm.best_pos_z,
+            average_value: average_pos_z,
+        });
+
         // Verifica a convergência
         if (swarm.best_pos_z - GLOBAL_BEST).abs() < CONVERGENCE {
             println!(
@@ -165,10 +186,23 @@ fn particle_swarm_optimization() {
         }
         curr_iter += 1;
     }
+
     println!("Melhor posição encontrada: {:?}", swarm.best_pos);
     println!("Melhor valor encontrado: {}", swarm.best_pos_z);
+
+    // Retorna o vetor com as informações de cada iteração
+    iterations_data
 }
 
 fn main() {
-    particle_swarm_optimization();
+    let iterations_data = particle_swarm_optimization();
+
+    // Exemplo de uso dos dados retornados
+    println!("Resultados por iteração:");
+    for data in iterations_data {
+        println!(
+            "Iteração {}: Melhor = {:.6}, Média = {:.6}",
+            data.iteration_number, data.best_value, data.average_value
+        );
+    }
 }
