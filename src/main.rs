@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::f64::consts::PI;
 
 // Constantes
-const DIMENSIONS: usize = 2; // Número de dimensões
+const DIMENSIONS: usize = 10; // Altere para o número de dimensões desejado
 const GLOBAL_BEST: f64 = 0.0; // Melhor valor global da função de custo
 const B_LO: f64 = -5.0; // Limite inferior do espaço de busca
 const B_HI: f64 = 5.0; // Limite superior do espaço de busca
@@ -41,16 +41,19 @@ impl Swarm {
         let mut rng = rand::thread_rng();
 
         for _ in 0..population {
-            let x = rng.gen_range(B_LO..B_HI);
-            let y = rng.gen_range(B_LO..B_HI);
-            let z = cost_function(x, y);
-            let velocity = [rng.gen_range(0.0..v_max), rng.gen_range(0.0..v_max)];
+            let mut pos = [0.0; DIMENSIONS];
+            let mut velocity = [0.0; DIMENSIONS];
+            for i in 0..DIMENSIONS {
+                pos[i] = rng.gen_range(B_LO..B_HI);
+                velocity[i] = rng.gen_range(-v_max..v_max);
+            }
+            let pos_z = cost_function(&pos);
             let particle = Particle {
-                pos: [x, y],
-                pos_z: z,
+                pos,
+                pos_z,
                 velocity,
-                best_pos: [x, y],
-                best_pos_z: z,
+                best_pos: pos,
+                best_pos_z: pos_z,
             };
             if particle.pos_z < best_pos_z {
                 best_pos = particle.pos;
@@ -67,15 +70,17 @@ impl Swarm {
     }
 }
 
-// Função de custo (Ackley)
-fn cost_function(x: f64, y: f64) -> f64 {
+// Função de custo (Ackley) generalizada para N dimensões
+fn cost_function(pos: &[f64; DIMENSIONS]) -> f64 {
     let a = 20.0;
     let b = 0.2;
     let c = 2.0 * PI;
 
-    let term_1 = (-b * ((0.5 * (x.powi(2) + y.powi(2))).sqrt())).exp();
-    let term_2 = ((c * x).cos() + (c * y).cos()) / 2.0;
-    let term_2 = term_2.exp();
+    let sum_sq: f64 = pos.iter().map(|&xi| xi.powi(2)).sum();
+    let sum_cos: f64 = pos.iter().map(|&xi| (c * xi).cos()).sum();
+
+    let term_1 = (-b * (sum_sq / DIMENSIONS as f64).sqrt()).exp();
+    let term_2 = (sum_cos / DIMENSIONS as f64).exp();
 
     -a * term_1 - term_2 + a + 1.0_f64.exp()
 }
@@ -129,7 +134,7 @@ fn particle_swarm_optimization() {
                         particle.pos[i] = rng.gen_range(B_LO..B_HI);
                     }
                 }
-                particle.pos_z = cost_function(particle.pos[0], particle.pos[1]);
+                particle.pos_z = cost_function(&particle.pos);
 
                 // Atualiza a melhor posição conhecida da partícula
                 if particle.pos_z < particle.best_pos_z {
