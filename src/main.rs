@@ -1,5 +1,7 @@
+use plotters::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
+
 use std::f64::consts::PI;
 
 // Constantes
@@ -13,7 +15,7 @@ const V_MAX: f64 = 0.1; // Velocidade máxima
 const PERSONAL_C: f64 = 2.0; // Coeficiente pessoal
 const SOCIAL_C: f64 = 2.0; // Coeficiente social
 const CONVERGENCE: f64 = 0.001; // Critério de convergência
-const MAX_ITER: usize = 1_000; // Número máximo de iterações
+const MAX_ITER: usize = 100; // Número máximo de iterações
 
 // Estrutura da Partícula
 #[derive(Clone)]
@@ -194,15 +196,80 @@ fn particle_swarm_optimization() -> Vec<Iteration> {
     iterations_data
 }
 
+fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn std::error::Error>> {
+    // Ordena os dados com base no número de iteração
+    let mut data = data;
+    data.sort_by_key(|iter| iter.iteration_number);
+
+    // Extrai os valores para os eixos X e Y
+    let x_vals: Vec<usize> = data.iter().map(|iter| iter.iteration_number).collect();
+    let best_vals: Vec<f64> = data.iter().map(|iter| iter.best_value).collect();
+    let avg_vals: Vec<f64> = data.iter().map(|iter| iter.average_value).collect();
+
+    // Define os limites dos eixos
+    let x_min = *x_vals.first().unwrap_or(&0);
+    let x_max = *x_vals.last().unwrap_or(&0);
+    let y_min = best_vals
+        .iter()
+        .chain(avg_vals.iter())
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let y_max = best_vals
+        .iter()
+        .chain(avg_vals.iter())
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    // Cria a área de desenho
+    let root = BitMapBackend::new(filename, (800, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    // Configura o gráfico
+    let mut chart = ChartBuilder::on(&root)
+        .caption("Valores ao Longo das Iterações", ("sans-serif", 30))
+        .margin(10)
+        .x_label_area_size(40)
+        .y_label_area_size(60)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
+
+    chart
+        .configure_mesh()
+        .x_desc("Iteração")
+        .y_desc("Valor")
+        .draw()?;
+
+    // Desenha a linha do best_value em vermelho
+    chart
+        .draw_series(LineSeries::new(
+            x_vals.iter().zip(best_vals.iter()).map(|(&x, &y)| (x, y)),
+            &RED,
+        ))?
+        .label("Melhor Valor")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+    // Desenha a linha do average_value em azul
+    chart
+        .draw_series(LineSeries::new(
+            x_vals.iter().zip(avg_vals.iter()).map(|(&x, &y)| (x, y)),
+            &BLUE,
+        ))?
+        .label("Valor Médio")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+
+    // Configura a legenda
+    chart
+        .configure_series_labels()
+        .background_style(&WHITE.mix(0.8))
+        .border_style(&BLACK)
+        .draw()?;
+
+    Ok(())
+}
+
 fn main() {
     let iterations_data = particle_swarm_optimization();
 
-    // Exemplo de uso dos dados retornados
-    println!("Resultados por iteração:");
-    for data in iterations_data {
-        println!(
-            "Iteração {}: Melhor = {:.6}, Média = {:.6}",
-            data.iteration_number, data.best_value, data.average_value
-        );
+    if let Err(e) = plot_iterations("arquivo.png", iterations_data) {
+        eprintln!("Error plotting iterations: {}", e);
     }
 }
