@@ -2,7 +2,7 @@ use plotters::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
 
-use std::f64::consts::{E, PI};
+use std::f64::consts::PI;
 
 use std::fs::File;
 use std::io::Write;
@@ -92,7 +92,7 @@ fn cost_function(pos: &[f64; DIMENSIONS]) -> f64 {
     let term_1: f64 = (-b * (sum_sq / DIMENSIONS as f64).sqrt()).exp();
     let term_2: f64 = (sum_cos / DIMENSIONS as f64).exp();
 
-    -a * term_1 - term_2 + a + E
+    -a * term_1 - term_2 + a + std::f64::consts::E
 }
 
 // Versão Base do PSO
@@ -438,22 +438,25 @@ fn plot_iterations(
     let best_vals: Vec<f64> = data.iter().map(|iter| iter.best_value).collect();
     let avg_vals: Vec<f64> = data.iter().map(|iter| iter.average_value).collect();
 
-    // Elevar os valores à constante de Euler
-    let best_vals_exp: Vec<f64> = best_vals.iter().map(|&val| E.powf(val)).collect();
-    let avg_vals_exp: Vec<f64> = avg_vals.iter().map(|&val| E.powf(val)).collect();
+    // Adiciona uma pequena constante para evitar log de zero ou valores negativos
+    let epsilon = 1e-10;
+
+    // Aplica o logaritmo natural aos valores
+    let best_vals_ln: Vec<f64> = best_vals.iter().map(|&val| (val + epsilon).ln()).collect();
+    let avg_vals_ln: Vec<f64> = avg_vals.iter().map(|&val| (val + epsilon).ln()).collect();
 
     // Define os limites dos eixos
     let x_min: usize = *x_vals.first().unwrap_or(&0);
     let x_max: usize = *x_vals.last().unwrap_or(&0);
 
-    let y_min = best_vals_exp
+    let y_min = best_vals_ln
         .iter()
-        .chain(avg_vals_exp.iter())
+        .chain(avg_vals_ln.iter())
         .cloned()
         .fold(f64::INFINITY, f64::min);
-    let y_max = best_vals_exp
+    let y_max = best_vals_ln
         .iter()
-        .chain(avg_vals_exp.iter())
+        .chain(avg_vals_ln.iter())
         .cloned()
         .fold(f64::NEG_INFINITY, f64::max);
 
@@ -472,7 +475,7 @@ fn plot_iterations(
     chart
         .configure_mesh()
         .x_desc("Iteração")
-        .y_desc("Valor (elevado a e)")
+        .y_desc("ln(Valor)")
         .draw()?;
 
     // Desenha a linha do best_value em vermelho
@@ -480,7 +483,7 @@ fn plot_iterations(
         .draw_series(LineSeries::new(
             x_vals
                 .iter()
-                .zip(best_vals_exp.iter())
+                .zip(best_vals_ln.iter())
                 .map(|(&x, &y)| (x, y)),
             &RED,
         ))?
@@ -490,10 +493,7 @@ fn plot_iterations(
     // Desenha a linha do average_value em azul
     chart
         .draw_series(LineSeries::new(
-            x_vals
-                .iter()
-                .zip(avg_vals_exp.iter())
-                .map(|(&x, &y)| (x, y)),
+            x_vals.iter().zip(avg_vals_ln.iter()).map(|(&x, &y)| (x, y)),
             &BLUE,
         ))?
         .label("Valor Médio")
