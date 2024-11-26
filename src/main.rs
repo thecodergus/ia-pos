@@ -16,7 +16,7 @@ const B_HI: f64 = 5.0; // Limite superior do espaço de busca
 const POPULATION: usize = 30; // Número de partículas no enxame
 const V_MAX: f64 = 0.1; // Velocidade máxima
 const CONVERGENCE: f64 = 1e-50; // Critério de convergência
-const MAX_ITER: usize = 100_000; // Número máximo de iterações
+const MAX_ITER: usize = 10_000; // Número máximo de iterações
 
 // Estrutura da Partícula
 #[derive(Clone)]
