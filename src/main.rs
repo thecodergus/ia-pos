@@ -10,10 +10,8 @@ const GLOBAL_BEST: f64 = 0.0; // Melhor valor global da função de custo
 const B_LO: f64 = -5.0; // Limite inferior do espaço de busca
 const B_HI: f64 = 5.0; // Limite superior do espaço de busca
 
-const POPULATION: usize = 20; // Número de partículas no enxame
+const POPULATION: usize = 50; // Número de partículas no enxame
 const V_MAX: f64 = 0.1; // Velocidade máxima
-const PERSONAL_C: f64 = 2.0; // Coeficiente pessoal
-const SOCIAL_C: f64 = 2.0; // Coeficiente social
 const CONVERGENCE: f64 = 0.001; // Critério de convergência
 const MAX_ITER: usize = 100; // Número máximo de iterações
 
@@ -94,14 +92,14 @@ fn cost_function(pos: &[f64; DIMENSIONS]) -> f64 {
     -a * term_1 - term_2 + a + 1.0_f64.exp()
 }
 
-// Função principal do algoritmo PSO
-fn particle_swarm_optimization() -> Vec<Iteration> {
+// Função PSO com Peso de Inércia (w)
+fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
     // Inicializa o enxame
     let mut swarm = Swarm::new(POPULATION, V_MAX);
 
-    // Inicializa o peso de inércia
     let mut rng = rand::thread_rng();
-    let inertia_weight = 0.5 + (rng.gen_range(0.0..1.0) / 2.0);
+
+    let inertia_weight = w;
 
     let mut curr_iter = 0;
 
@@ -120,10 +118,13 @@ fn particle_swarm_optimization() -> Vec<Iteration> {
                     let r1: f64 = rng.gen_range(0.0..1.0);
                     let r2: f64 = rng.gen_range(0.0..1.0);
 
+                    // Coeficientes
+                    let c1 = 2.0; // Ajuste se necessário
+                    let c2 = 2.0; // Ajuste se necessário
+
                     // Atualiza a velocidade da partícula
-                    let personal_coefficient =
-                        PERSONAL_C * r1 * (particle.best_pos[i] - particle.pos[i]);
-                    let social_coefficient = SOCIAL_C * r2 * (swarm.best_pos[i] - particle.pos[i]);
+                    let personal_coefficient = c1 * r1 * (particle.best_pos[i] - particle.pos[i]);
+                    let social_coefficient = c2 * r2 * (swarm.best_pos[i] - particle.pos[i]);
                     let mut new_velocity = inertia_weight * particle.velocity[i]
                         + personal_coefficient
                         + social_coefficient;
@@ -189,8 +190,123 @@ fn particle_swarm_optimization() -> Vec<Iteration> {
         curr_iter += 1;
     }
 
-    println!("Melhor posição encontrada: {:?}", swarm.best_pos);
-    println!("Melhor valor encontrado: {}", swarm.best_pos_z);
+    println!("Melhor posição encontrada (w): {:?}", swarm.best_pos);
+    println!("Melhor valor encontrado (w): {}", swarm.best_pos_z);
+
+    // Retorna o vetor com as informações de cada iteração
+    iterations_data
+}
+
+// Função PSO com Fator de Constrição (k)
+fn particle_swarm_optimization_k() -> Vec<Iteration> {
+    // Inicializa o enxame
+    let mut swarm = Swarm::new(POPULATION, V_MAX);
+
+    let mut rng = rand::thread_rng();
+
+    // Definir c1 e c2 de forma que φ > 4
+    let c1: f64 = 2.05;
+    let c2: f64 = 2.05;
+    let phi: f64 = c1 + c2;
+
+    if phi <= 4.0 {
+        panic!("Phi deve ser maior que 4 para o cálculo do fator de constrição.");
+    }
+
+    let sqrt_term: f64 = ((phi * phi) - (4.0 * phi)).sqrt();
+    let denominator: f64 = (2.0 - phi - sqrt_term).abs();
+    let k: f64 = 2.0 / denominator;
+
+    let mut curr_iter = 0;
+
+    // Vetor para armazenar as informações de cada iteração
+    let mut iterations_data = Vec::new();
+
+    while curr_iter < MAX_ITER {
+        // Paraleliza a atualização das partículas
+        let particles_clone = &mut swarm.particles;
+        let best_particle = particles_clone
+            .par_iter_mut()
+            .map(|particle| {
+                let mut rng = rand::thread_rng();
+
+                for i in 0..DIMENSIONS {
+                    let r1: f64 = rng.gen_range(0.0..1.0);
+                    let r2: f64 = rng.gen_range(0.0..1.0);
+
+                    // Atualiza a velocidade da partícula
+                    let cognitive_component = c1 * r1 * (particle.best_pos[i] - particle.pos[i]);
+                    let social_component = c2 * r2 * (swarm.best_pos[i] - particle.pos[i]);
+
+                    let mut new_velocity =
+                        particle.velocity[i] + cognitive_component + social_component;
+
+                    // Aplica o fator de constrição k
+                    new_velocity *= k;
+
+                    // Verifica se a velocidade excede o máximo
+                    if new_velocity > V_MAX {
+                        new_velocity = V_MAX;
+                    } else if new_velocity < -V_MAX {
+                        new_velocity = -V_MAX;
+                    }
+                    particle.velocity[i] = new_velocity;
+                }
+
+                // Atualiza a posição atual da partícula
+                for i in 0..DIMENSIONS {
+                    particle.pos[i] += particle.velocity[i];
+
+                    // Verifica se a partícula está dentro dos limites
+                    if particle.pos[i] > B_HI || particle.pos[i] < B_LO {
+                        particle.pos[i] = rng.gen_range(B_LO..B_HI);
+                    }
+                }
+                particle.pos_z = cost_function(&particle.pos);
+
+                // Atualiza a melhor posição conhecida da partícula
+                if particle.pos_z < particle.best_pos_z {
+                    particle.best_pos = particle.pos;
+                    particle.best_pos_z = particle.pos_z;
+                }
+
+                // Retorna a partícula para possível atualização do melhor global
+                particle.clone()
+            })
+            // Encontra a melhor partícula desta iteração
+            .min_by(|a, b| a.pos_z.partial_cmp(&b.pos_z).unwrap())
+            .unwrap();
+
+        // Atualiza a melhor posição global se necessário
+        if best_particle.pos_z < swarm.best_pos_z {
+            swarm.best_pos = best_particle.pos;
+            swarm.best_pos_z = best_particle.pos_z;
+        }
+
+        // Calcula a média dos valores de pos_z das partículas nesta iteração
+        let sum_pos_z: f64 = swarm.particles.par_iter().map(|p| p.pos_z).sum();
+        let average_pos_z = sum_pos_z / POPULATION as f64;
+
+        // Armazena os dados desta iteração
+        iterations_data.push(Iteration {
+            iteration_number: curr_iter,
+            best_value: swarm.best_pos_z,
+            average_value: average_pos_z,
+        });
+
+        // Verifica a convergência
+        if (swarm.best_pos_z - GLOBAL_BEST).abs() < CONVERGENCE {
+            println!(
+                "O enxame atingiu o critério de convergência após {} iterações.",
+                curr_iter
+            );
+            break;
+        }
+        curr_iter += 1;
+    }
+
+    println!("Melhor posição encontrada (k): {:?}", swarm.best_pos);
+    println!("Melhor valor encontrado (k): {}", swarm.best_pos_z);
 
     // Retorna o vetor com as informações de cada iteração
     iterations_data
@@ -267,9 +383,18 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
 }
 
 fn main() {
-    let iterations_data = particle_swarm_optimization();
+    // Executa o PSO com Peso de Inércia w
+    let w = 0.729; // Valor de exemplo para w
+    let iterations_data_w = particle_swarm_optimization_w(w);
 
-    if let Err(e) = plot_iterations("arquivo.png", iterations_data) {
-        eprintln!("Error plotting iterations: {}", e);
+    if let Err(e) = plot_iterations("arquivo_w.png", iterations_data_w) {
+        eprintln!("Erro ao plotar iterações (w): {}", e);
+    }
+
+    // Executa o PSO com Fator de Constrição k
+    let iterations_data_k = particle_swarm_optimization_k();
+
+    if let Err(e) = plot_iterations("arquivo_k.png", iterations_data_k) {
+        eprintln!("Erro ao plotar iterações (k): {}", e);
     }
 }
