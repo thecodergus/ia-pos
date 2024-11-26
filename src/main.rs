@@ -2,7 +2,10 @@ use plotters::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
 
-use std::f64::consts::PI;
+use std::f64::consts::{E, PI};
+
+use std::fs::File;
+use std::io::Write;
 
 // Constantes
 const DIMENSIONS: usize = 10; // Altere para o número de dimensões desejado
@@ -79,36 +82,32 @@ impl Swarm {
 
 // Função de custo (Ackley) generalizada para N dimensões
 fn cost_function(pos: &[f64; DIMENSIONS]) -> f64 {
-    let a = 20.0;
-    let b = 0.2;
-    let c = 2.0 * PI;
+    let a: f64 = 20.0;
+    let b: f64 = 0.2;
+    let c: f64 = 2.0 * PI;
 
     let sum_sq: f64 = pos.iter().map(|&xi| xi.powi(2)).sum();
     let sum_cos: f64 = pos.iter().map(|&xi| (c * xi).cos()).sum();
 
-    let term_1 = (-b * (sum_sq / DIMENSIONS as f64).sqrt()).exp();
-    let term_2 = (sum_cos / DIMENSIONS as f64).exp();
+    let term_1: f64 = (-b * (sum_sq / DIMENSIONS as f64).sqrt()).exp();
+    let term_2: f64 = (sum_cos / DIMENSIONS as f64).exp();
 
-    -a * term_1 - term_2 + a + 1.0_f64.exp()
+    -a * term_1 - term_2 + a + E
 }
 
-// Função PSO com Peso de Inércia (w)
-fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
+// Versão Base do PSO
+fn particle_swarm_optimization_base() -> Vec<Iteration> {
     // Inicializa o enxame
-    let mut swarm = Swarm::new(POPULATION, V_MAX);
+    let mut swarm: Swarm = Swarm::new(POPULATION, V_MAX);
 
-    let mut rng = rand::thread_rng();
-
-    let inertia_weight = w;
-
-    let mut curr_iter = 0;
+    let mut curr_iter: usize = 0;
 
     // Vetor para armazenar as informações de cada iteração
-    let mut iterations_data = Vec::new();
+    let mut iterations_data: Vec<Iteration> = Vec::new();
 
     while curr_iter < MAX_ITER {
         // Paraleliza a atualização das partículas
-        let particles_clone = &mut swarm.particles;
+        let particles_clone: &mut Vec<Particle> = &mut swarm.particles;
         let best_particle = particles_clone
             .par_iter_mut()
             .map(|particle| {
@@ -119,15 +118,14 @@ fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
                     let r2: f64 = rng.gen_range(0.0..1.0);
 
                     // Coeficientes
-                    let c1 = 2.0; // Ajuste se necessário
-                    let c2 = 2.0; // Ajuste se necessário
+                    let c1 = 2.0;
+                    let c2 = 2.0;
 
                     // Atualiza a velocidade da partícula
                     let personal_coefficient = c1 * r1 * (particle.best_pos[i] - particle.pos[i]);
                     let social_coefficient = c2 * r2 * (swarm.best_pos[i] - particle.pos[i]);
-                    let mut new_velocity = inertia_weight * particle.velocity[i]
-                        + personal_coefficient
-                        + social_coefficient;
+                    let mut new_velocity =
+                        particle.velocity[i] + personal_coefficient + social_coefficient;
 
                     // Verifica se a velocidade excede o máximo
                     if new_velocity > V_MAX {
@@ -170,7 +168,7 @@ fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
 
         // Calcula a média dos valores de pos_z das partículas nesta iteração
         let sum_pos_z: f64 = swarm.particles.par_iter().map(|p| p.pos_z).sum();
-        let average_pos_z = sum_pos_z / POPULATION as f64;
+        let average_pos_z: f64 = sum_pos_z / POPULATION as f64;
 
         // Armazena os dados desta iteração
         iterations_data.push(Iteration {
@@ -182,7 +180,112 @@ fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
         // Verifica a convergência
         if (swarm.best_pos_z - GLOBAL_BEST).abs() < CONVERGENCE {
             println!(
-                "O enxame atingiu o critério de convergência após {} iterações.",
+                "O enxame atingiu o critério de convergência após {} iterações (Base).",
+                curr_iter
+            );
+            break;
+        }
+        curr_iter += 1;
+    }
+
+    println!("Melhor posição encontrada (Base): {:?}", swarm.best_pos);
+    println!("Melhor valor encontrado (Base): {}", swarm.best_pos_z);
+
+    // Salva o melhor vetor de posição em um arquivo
+    let mut file: File =
+        File::create("best_position_base.txt").expect("Não foi possível criar o arquivo");
+    writeln!(file, "{:?}", swarm.best_pos).expect("Não foi possível escrever no arquivo");
+
+    // Retorna o vetor com as informações de cada iteração
+    iterations_data
+}
+
+// Função PSO com Peso de Inércia (w)
+fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
+    // Inicializa o enxame
+    let mut swarm: Swarm = Swarm::new(POPULATION, V_MAX);
+
+    let mut curr_iter: usize = 0;
+
+    // Vetor para armazenar as informações de cada iteração
+    let mut iterations_data = Vec::new();
+
+    while curr_iter < MAX_ITER {
+        // Paraleliza a atualização das partículas
+        let particles_clone = &mut swarm.particles;
+        let best_particle = particles_clone
+            .par_iter_mut()
+            .map(|particle| {
+                let mut rng = rand::thread_rng();
+
+                for i in 0..DIMENSIONS {
+                    let r1: f64 = rng.gen_range(0.0..1.0);
+                    let r2: f64 = rng.gen_range(0.0..1.0);
+
+                    // Coeficientes
+                    let c1: f64 = 2.0;
+                    let c2: f64 = 2.0;
+
+                    // Atualiza a velocidade da partícula
+                    let personal_coefficient = c1 * r1 * (particle.best_pos[i] - particle.pos[i]);
+                    let social_coefficient = c2 * r2 * (swarm.best_pos[i] - particle.pos[i]);
+                    let mut new_velocity =
+                        w * particle.velocity[i] + personal_coefficient + social_coefficient;
+
+                    // Verifica se a velocidade excede o máximo
+                    if new_velocity > V_MAX {
+                        new_velocity = V_MAX;
+                    } else if new_velocity < -V_MAX {
+                        new_velocity = -V_MAX;
+                    }
+                    particle.velocity[i] = new_velocity;
+                }
+
+                // Atualiza a posição atual da partícula
+                for i in 0..DIMENSIONS {
+                    particle.pos[i] += particle.velocity[i];
+
+                    // Verifica se a partícula está dentro dos limites
+                    if particle.pos[i] > B_HI || particle.pos[i] < B_LO {
+                        particle.pos[i] = rng.gen_range(B_LO..B_HI);
+                    }
+                }
+                particle.pos_z = cost_function(&particle.pos);
+
+                // Atualiza a melhor posição conhecida da partícula
+                if particle.pos_z < particle.best_pos_z {
+                    particle.best_pos = particle.pos;
+                    particle.best_pos_z = particle.pos_z;
+                }
+
+                // Retorna a partícula para possível atualização do melhor global
+                particle.clone()
+            })
+            // Encontra a melhor partícula desta iteração
+            .min_by(|a, b| a.pos_z.partial_cmp(&b.pos_z).unwrap())
+            .unwrap();
+
+        // Atualiza a melhor posição global se necessário
+        if best_particle.pos_z < swarm.best_pos_z {
+            swarm.best_pos = best_particle.pos;
+            swarm.best_pos_z = best_particle.pos_z;
+        }
+
+        // Calcula a média dos valores de pos_z das partículas nesta iteração
+        let sum_pos_z: f64 = swarm.particles.par_iter().map(|p| p.pos_z).sum();
+        let average_pos_z: f64 = sum_pos_z / POPULATION as f64;
+
+        // Armazena os dados desta iteração
+        iterations_data.push(Iteration {
+            iteration_number: curr_iter,
+            best_value: swarm.best_pos_z,
+            average_value: average_pos_z,
+        });
+
+        // Verifica a convergência
+        if (swarm.best_pos_z - GLOBAL_BEST).abs() < CONVERGENCE {
+            println!(
+                "O enxame atingiu o critério de convergência após {} iterações (w).",
                 curr_iter
             );
             break;
@@ -193,6 +296,10 @@ fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
     println!("Melhor posição encontrada (w): {:?}", swarm.best_pos);
     println!("Melhor valor encontrado (w): {}", swarm.best_pos_z);
 
+    // Salva o melhor vetor de posição em um arquivo
+    let mut file = File::create("best_position_w.txt").expect("Não foi possível criar o arquivo");
+    writeln!(file, "{:?}", swarm.best_pos).expect("Não foi possível escrever no arquivo");
+
     // Retorna o vetor com as informações de cada iteração
     iterations_data
 }
@@ -200,9 +307,9 @@ fn particle_swarm_optimization_w(w: f64) -> Vec<Iteration> {
 // Função PSO com Fator de Constrição (k)
 fn particle_swarm_optimization_k() -> Vec<Iteration> {
     // Inicializa o enxame
-    let mut swarm = Swarm::new(POPULATION, V_MAX);
+    let mut swarm: Swarm = Swarm::new(POPULATION, V_MAX);
 
-    let mut rng = rand::thread_rng();
+    let mut rng: ThreadRng = rand::thread_rng();
 
     // Definir c1 e c2 de forma que φ > 4
     let c1: f64 = 2.05;
@@ -217,10 +324,10 @@ fn particle_swarm_optimization_k() -> Vec<Iteration> {
     let denominator: f64 = (2.0 - phi - sqrt_term).abs();
     let k: f64 = 2.0 / denominator;
 
-    let mut curr_iter = 0;
+    let mut curr_iter: usize = 0;
 
     // Vetor para armazenar as informações de cada iteração
-    let mut iterations_data = Vec::new();
+    let mut iterations_data: Vec<Iteration> = Vec::new();
 
     while curr_iter < MAX_ITER {
         // Paraleliza a atualização das partículas
@@ -297,7 +404,7 @@ fn particle_swarm_optimization_k() -> Vec<Iteration> {
         // Verifica a convergência
         if (swarm.best_pos_z - GLOBAL_BEST).abs() < CONVERGENCE {
             println!(
-                "O enxame atingiu o critério de convergência após {} iterações.",
+                "O enxame atingiu o critério de convergência após {} iterações (k).",
                 curr_iter
             );
             break;
@@ -308,13 +415,22 @@ fn particle_swarm_optimization_k() -> Vec<Iteration> {
     println!("Melhor posição encontrada (k): {:?}", swarm.best_pos);
     println!("Melhor valor encontrado (k): {}", swarm.best_pos_z);
 
+    // Salva o melhor vetor de posição em um arquivo
+    let mut file: File =
+        File::create("best_position_k.txt").expect("Não foi possível criar o arquivo");
+    writeln!(file, "{:?}", swarm.best_pos).expect("Não foi possível escrever no arquivo");
+
     // Retorna o vetor com as informações de cada iteração
     iterations_data
 }
 
-fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_iterations(
+    filename: &str,
+    data: Vec<Iteration>,
+    title: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Ordena os dados com base no número de iteração
-    let mut data = data;
+    let mut data: Vec<Iteration> = data;
     data.sort_by_key(|iter| iter.iteration_number);
 
     // Extrai os valores para os eixos X e Y
@@ -322,17 +438,22 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
     let best_vals: Vec<f64> = data.iter().map(|iter| iter.best_value).collect();
     let avg_vals: Vec<f64> = data.iter().map(|iter| iter.average_value).collect();
 
+    // Elevar os valores à constante de Euler
+    let best_vals_exp: Vec<f64> = best_vals.iter().map(|&val| E.powf(val)).collect();
+    let avg_vals_exp: Vec<f64> = avg_vals.iter().map(|&val| E.powf(val)).collect();
+
     // Define os limites dos eixos
-    let x_min = *x_vals.first().unwrap_or(&0);
-    let x_max = *x_vals.last().unwrap_or(&0);
-    let y_min = best_vals
+    let x_min: usize = *x_vals.first().unwrap_or(&0);
+    let x_max: usize = *x_vals.last().unwrap_or(&0);
+
+    let y_min = best_vals_exp
         .iter()
-        .chain(avg_vals.iter())
+        .chain(avg_vals_exp.iter())
         .cloned()
         .fold(f64::INFINITY, f64::min);
-    let y_max = best_vals
+    let y_max = best_vals_exp
         .iter()
-        .chain(avg_vals.iter())
+        .chain(avg_vals_exp.iter())
         .cloned()
         .fold(f64::NEG_INFINITY, f64::max);
 
@@ -342,7 +463,7 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
 
     // Configura o gráfico
     let mut chart = ChartBuilder::on(&root)
-        .caption("Valores ao Longo das Iterações", ("sans-serif", 30))
+        .caption(title, ("sans-serif", 30))
         .margin(10)
         .x_label_area_size(40)
         .y_label_area_size(60)
@@ -351,13 +472,16 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
     chart
         .configure_mesh()
         .x_desc("Iteração")
-        .y_desc("Valor")
+        .y_desc("Valor (elevado a e)")
         .draw()?;
 
     // Desenha a linha do best_value em vermelho
     chart
         .draw_series(LineSeries::new(
-            x_vals.iter().zip(best_vals.iter()).map(|(&x, &y)| (x, y)),
+            x_vals
+                .iter()
+                .zip(best_vals_exp.iter())
+                .map(|(&x, &y)| (x, y)),
             &RED,
         ))?
         .label("Melhor Valor")
@@ -366,7 +490,10 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
     // Desenha a linha do average_value em azul
     chart
         .draw_series(LineSeries::new(
-            x_vals.iter().zip(avg_vals.iter()).map(|(&x, &y)| (x, y)),
+            x_vals
+                .iter()
+                .zip(avg_vals_exp.iter())
+                .map(|(&x, &y)| (x, y)),
             &BLUE,
         ))?
         .label("Valor Médio")
@@ -383,18 +510,37 @@ fn plot_iterations(filename: &str, data: Vec<Iteration>) -> Result<(), Box<dyn s
 }
 
 fn main() {
+    // Executa a versão base do PSO
+    let iterations_data_base: Vec<Iteration> = particle_swarm_optimization_base();
+
+    if let Err(e) = plot_iterations(
+        "arquivo_base.png",
+        iterations_data_base,
+        "PSO Base - Valores ao Longo das Iterações",
+    ) {
+        eprintln!("Erro ao plotar iterações (Base): {}", e);
+    }
+
     // Executa o PSO com Peso de Inércia w
     let w = 0.729; // Valor de exemplo para w
-    let iterations_data_w = particle_swarm_optimization_w(w);
+    let iterations_data_w: Vec<Iteration> = particle_swarm_optimization_w(w);
 
-    if let Err(e) = plot_iterations("arquivo_w.png", iterations_data_w) {
+    if let Err(e) = plot_iterations(
+        "arquivo_w.png",
+        iterations_data_w,
+        "PSO com Peso de Inércia (w) - Valores ao Longo das Iterações",
+    ) {
         eprintln!("Erro ao plotar iterações (w): {}", e);
     }
 
     // Executa o PSO com Fator de Constrição k
-    let iterations_data_k = particle_swarm_optimization_k();
+    let iterations_data_k: Vec<Iteration> = particle_swarm_optimization_k();
 
-    if let Err(e) = plot_iterations("arquivo_k.png", iterations_data_k) {
+    if let Err(e) = plot_iterations(
+        "arquivo_k.png",
+        iterations_data_k,
+        "PSO com Fator de Constrição (k) - Valores ao Longo das Iterações",
+    ) {
         eprintln!("Erro ao plotar iterações (k): {}", e);
     }
 }
