@@ -8,15 +8,15 @@ use std::fs::File;
 use std::io::Write;
 
 // Constantes
-const DIMENSIONS: usize = 10; // Altere para o número de dimensões desejado
+const DIMENSIONS: usize = 20; // Altere para o número de dimensões desejado
 const GLOBAL_BEST: f64 = 0.0; // Melhor valor global da função de custo
 const B_LO: f64 = -5.0; // Limite inferior do espaço de busca
 const B_HI: f64 = 5.0; // Limite superior do espaço de busca
 
 const POPULATION: usize = 50; // Número de partículas no enxame
 const V_MAX: f64 = 0.1; // Velocidade máxima
-const CONVERGENCE: f64 = 0.001; // Critério de convergência
-const MAX_ITER: usize = 100; // Número máximo de iterações
+const CONVERGENCE: f64 = 1e-20; // Critério de convergência
+const MAX_ITER: usize = 1_000; // Número máximo de iterações
 
 // Estrutura da Partícula
 #[derive(Clone)]
